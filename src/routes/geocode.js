@@ -14,7 +14,7 @@ router.get('/search', async (req, res) => {
     const params = new URLSearchParams({
       q,
       format: 'json',
-      addressdetails: '0',
+      addressdetails: '1',
       limit: String(limit),
       countrycodes: country,
     });
@@ -37,6 +37,9 @@ router.get('/search', async (req, res) => {
       lat: parseFloat(it.lat),
       lon: parseFloat(it.lon),
       source: 'nominatim',
+      category: it.category || it.class || null,
+      type: it.type || null,
+      address: it.address || null,
     }));
 
     // CORS for frontend consumption

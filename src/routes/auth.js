@@ -28,10 +28,10 @@ router.post('/admin/register', async (req, res) => {
     const count = await User.countDocuments({ role: 'admin' });
     if (count > 0) return res.status(403).json({ error: 'Admin déjà existant' });
     const { username, password, name } = req.body || {};
-    if (!username || String(username).trim().length < 3) return res.status(400).json({ error: 'Nom d’utilisateur invalide (min 3)' });
+    if (!username || String(username).trim().length < 3) return res.status(400).json({ error: 'Nom d\'utilisateur invalide (min 3)' });
     if (!password || String(password).length < 6) return res.status(400).json({ error: 'Mot de passe trop court (min 6)' });
     const existing = await User.findOne({ username: String(username).trim().toLowerCase() });
-    if (existing) return res.status(409).json({ error: 'Nom d’utilisateur déjà pris' });
+    if (existing) return res.status(409).json({ error: 'Nom d\'utilisateur déjà pris' });
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(String(password), salt);
@@ -83,29 +83,80 @@ router.post('/register', async (req, res) => {
   try {
     const { name, phone, password, email, district } = req.body || {};
 
-    // Basic validation
-    if (!name || typeof name !== 'string' || name.trim().length < 2) {
-      return res.status(400).json({ error: 'Nom invalide' });
+    // Validation du nom complet (au moins 2 mots, uniquement des lettres, min 2 caractères par mot)
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ error: "Ce n'est pas un format correct de nom complet" });
     }
-    if (!password || typeof password !== 'string' || password.length < 6) {
-      return res.status(400).json({ error: 'Mot de passe trop court (min 6)' });
+    
+    const nameWords = name.trim().split(/\s+/);
+    if (nameWords.length < 2) {
+      return res.status(400).json({ error: "Ce n'est pas un format correct de nom complet" });
     }
-    if (!phone || typeof phone !== 'string' || !/[0-9+\s-]{7,}/.test(phone)) {
-      return res.status(400).json({ error: 'Téléphone invalide' });
+    
+    // Vérifier chaque mot du nom
+    for (const word of nameWords) {
+      if (!/^[a-zA-ZÀ-ÿ]+$/.test(word)) {
+        return res.status(400).json({ error: "Ce n'est pas un format correct de nom complet" });
+      }
+      if (word.length < 2) {
+        return res.status(400).json({ error: "Ce n'est pas un format correct de nom complet" });
+      }
+    }
+
+    // Validation de l'email (format standard)
+    if (email && typeof email === 'string' && email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+      if (!emailRegex.test(email.trim())) {
+        return res.status(400).json({ error: "votre mail n'est pas correcte" });
+      }
+    }
+
+    // Validation du téléphone (uniquement +225, 10 chiffres)
+    if (!phone || typeof phone !== 'string') {
+      return res.status(400).json({ error: "votre numéro est incorrect" });
+    }
+    
+    // Nettoyer et formater le numéro de téléphone
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      return res.status(400).json({ error: "votre numéro est incorrect" });
+    }
+    
+    // Vérifier que le numéro commence par les indicatifs ivoiriens courants
+    const ivoirePrefixes = ['07', '05', '01', '04', '25', '27', '20', '21', '22', '23', '24', '26', '28', '29'];
+    const prefix = cleanPhone.substring(0, 2);
+    if (!ivoirePrefixes.includes(prefix)) {
+      return res.status(400).json({ error: "votre numéro est incorrect" });
+    }
+
+    // Validation du mot de passe (3 critères cruciaux: 8 caractères, minuscule, majuscule)
+    if (!password || typeof password !== 'string') {
+      return res.status(400).json({ error: "votre mot de passe est incorrect" });
+    }
+    
+    const hasMinLength = password.length >= 8;
+    const hasLowercase = /[a-z]/.test(password);
+    const hasUppercase = /[A-Z]/.test(password);
+    
+    if (!hasMinLength || !hasLowercase || !hasUppercase) {
+      return res.status(400).json({ error: "votre mot de passe est incorrect" });
     }
 
     // Uniqueness
-    const existing = await User.findOne({ phone });
+    const existing = await User.findOne({ phone: `+225 ${cleanPhone.slice(0, 2)} ${cleanPhone.slice(2, 4)} ${cleanPhone.slice(4, 7)} ${cleanPhone.slice(7, 10)}` });
     if (existing) return res.status(409).json({ error: 'Téléphone déjà enregistré' });
 
     // Hash password
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
+    // Formater le numéro de téléphone
+    const formattedPhone = `+225 ${cleanPhone.slice(0, 2)} ${cleanPhone.slice(2, 4)} ${cleanPhone.slice(4, 7)} ${cleanPhone.slice(7, 10)}`;
+
     const user = await User.create({
       role: 'client',
       name: name.trim(),
-      phone: phone.trim(),
+      phone: formattedPhone,
       email: email?.trim()?.toLowerCase() || undefined,
       district: district?.trim() || undefined,
       passwordHash,
