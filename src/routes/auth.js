@@ -185,29 +185,27 @@ router.post('/register', async (req, res) => {
 });
 
 // POST /api/auth/login
-// Body: { phone, password }
+// Body: { phone, password } — connexion par numéro de téléphone uniquement
 router.post('/login', async (req, res) => {
   try {
     const { identifier, phone, password } = req.body || {};
     if (!password) return res.status(400).json({ error: 'Mot de passe requis' });
     const raw = (identifier ?? phone ?? '').trim();
-    if (!raw) return res.status(400).json({ error: 'Téléphone ou email requis' });
 
-    // Accept phone OR email, be lenient on phone formatting (spaces/dashes)
-    const isEmail = raw.includes('@');
-    let user;
-    if (isEmail) {
-      user = await User.findOne({ email: raw.toLowerCase() });
-    } else {
-      const phoneDigits = raw.replace(/\D/g, '');
-      // Build a regex that allows any non-digit chars between the digits
-      const optionalNonDigitsPattern = phoneDigits
-        .split('')
-        .map(ch => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-        .join('\\D*');
-      const rx = new RegExp('^\\D*' + optionalNonDigitsPattern + '\\D*$');
-      user = await User.findOne({ $or: [ { phone: raw }, { phone: { $regex: rx } } ] });
-    }
+    // Phone-only login: normalize to digits, strip optional country code (225 / 00225)
+    let digits = raw.replace(/\D/g, '');
+    if (digits.startsWith('00225')) digits = digits.slice(5);
+    else if (digits.length > 10 && digits.startsWith('225')) digits = digits.slice(3);
+    if (!digits) return res.status(400).json({ error: 'Numéro de téléphone requis' });
+
+    // Match stored phones regardless of formatting: optional non-digits between
+    // digits, optional leading country code in the stored value.
+    const digitsPattern = digits
+      .split('')
+      .map(ch => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('\\D*');
+    const rx = new RegExp('^\\D*(?:(?:00)?225)?\\D*' + digitsPattern + '\\D*$');
+    const user = await User.findOne({ phone: { $regex: rx } });
     if (!user) return res.status(401).json({ error: 'Identifiants invalides' });
 
     const ok = await bcrypt.compare(password, user.passwordHash);
